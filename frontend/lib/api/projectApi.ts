@@ -2,10 +2,11 @@
 import axios from 'axios';
 import { Project, ProjectCreate, ProjectUpdate } from '../../types/project';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
 const API_PATH = '/api/v1/projects';
 
 // Configure axios instance with default headers
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
 const apiClient = axios.create({
   baseURL: API_URL,
   timeout: 10000,
