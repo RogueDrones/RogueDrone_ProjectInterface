@@ -30,11 +30,32 @@ export interface Client extends ClientBase {
   updated_at: string;
 }
 
-// Organisation reference for displaying organisation details with client
-export interface Organisation {
-  _id: string;
+// Base organisation properties
+export interface OrganisationBase {
   name: string;
   website?: string;
   industry?: string;
   location?: string;
+  social_media?: Record<string, string>;
+  notes?: string;
+}
+
+// Interface for organisation creation
+export interface OrganisationCreate extends OrganisationBase {}
+
+// Interface for organisation updates (all fields optional)
+export interface OrganisationUpdate {
+  name?: string;
+  website?: string;
+  industry?: string;
+  location?: string;
+  social_media?: Record<string, string>;
+  notes?: string;
+}
+
+// Full organisation model including server-generated fields
+export interface Organisation extends OrganisationBase {
+  _id: string;
+  created_at: string;
+  updated_at: string;
 }

@@ -1,3 +1,60 @@
+# .gitignore
+
+```
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+.env*
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+venv/
+env/
+ENV/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# Docker
+*.pid
+
+# Test/coverage
+coverage/
+*.cover
+*.py,cover
+.hypothesis/
+
+# Misc
+*.log
+*.tsbuildinfo
+
+# Ignore build artifacts
+build/
+dist/
+
+# Ignore local config
+*.sqlite3
+*.db
+
+# Ignore Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+```
+
 # .vscode\settings.json
 
 ```json
@@ -12,15 +69,18 @@
         "httplib",
         "httpx",
         "INITDB",
+        "ipynb",
         "organisation",
         "organisations",
         "passlib",
+        "pycache",
         "pydantic",
         "pymongo",
         "pytest",
         "pytestmark",
         "securepassword",
         "uvicorn",
+        "venv",
         "wrongpassword"
     ]
 }
@@ -2757,6 +2817,613 @@ export default function ApiHealthCheck({ onHealthCheckResult }: ApiHealthCheckPr
 }
 ```
 
+# frontend\components\clients\ClientDetail.tsx
+
+```tsx
+// frontend/components/clients/ClientDetail.tsx
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { Client, Organisation, Project, Meeting, Document } from '../../types';
+import { formatDate, formatShortDate, formatDateTime } from '../../lib/utils/dateUtils';
+import { clientApi, organisationApi, projectApi, meetingApi, documentApi } from '../../lib/api';
+import { useApiStatus, withApiStatus } from '../../hooks/useApiStatus';
+import LoadingSpinner from '../common/LoadingSpinner';
+import StatusBadge from '../common/StatusBadge';
+
+// Tab enum for managing selected tab state
+enum TabType {
+  INFO = 'info',
+  PROJECTS = 'projects',
+  MEETINGS = 'meetings',
+  DOCUMENTS = 'documents',
+}
+
+interface ClientDetailProps {
+  clientId: string;
+}
+
+const ClientDetail: React.FC<ClientDetailProps> = ({ clientId }) => {
+  // State management
+  const [client, setClient] = useState<Client | null>(null);
+  const [organisation, setOrganisation] = useState<Organisation | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>(TabType.INFO);
+  const [isLoading, setIsLoading] = useState<Record<string, boolean>>({
+    client: true,
+    organisation: false,
+    projects: false,
+    meetings: false,
+    documents: false,
+  });
+  
+  const { status, error, setStatus, setError } = useApiStatus();
+
+  // Fetch client data
+  useEffect(() => {
+    const fetchClientData = async () => {
+      setIsLoading({ ...isLoading, client: true });
+      
+      const result = await withApiStatus(
+        () => clientApi.getClient(clientId),
+        { setStatus, setError }
+      );
+
+      if (result) {
+        setClient(result);
+        setIsLoading({ ...isLoading, client: false });
+        
+        // If client has an organisation_id, fetch the organisation details
+        if (result.organisation_id) {
+          setIsLoading({ ...isLoading, organisation: true });
+          try {
+            const org = await organisationApi.getOrganisation(result.organisation_id);
+            setOrganisation(org);
+          } catch (error) {
+            console.error('Failed to fetch organisation details:', error);
+          } finally {
+            setIsLoading({ ...isLoading, organisation: false });
+          }
+        }
+      } else {
+        setIsLoading({ ...isLoading, client: false });
+      }
+    };
+
+    if (clientId) {
+      fetchClientData();
+    }
+  }, [clientId]);
+
+  // Fetch projects when projects tab is selected
+  useEffect(() => {
+    const fetchProjects = async () => {
+      if (activeTab === TabType.PROJECTS && clientId && !projects.length) {
+        setIsLoading({ ...isLoading, projects: true });
+        
+        try {
+          const fetchedProjects = await projectApi.getProjects(clientId);
+          setProjects(fetchedProjects);
+        } catch (error) {
+          console.error('Failed to fetch projects:', error);
+        } finally {
+          setIsLoading({ ...isLoading, projects: false });
+        }
+      }
+    };
+
+    fetchProjects();
+  }, [activeTab, clientId, projects.length]);
+
+  // Fetch meetings when meetings tab is selected
+  useEffect(() => {
+    const fetchMeetings = async () => {
+      if (activeTab === TabType.MEETINGS && clientId && !meetings.length) {
+        setIsLoading({ ...isLoading, meetings: true });
+        
+        try {
+          const fetchedMeetings = await meetingApi.getMeetings(clientId);
+          setMeetings(fetchedMeetings);
+        } catch (error) {
+          console.error('Failed to fetch meetings:', error);
+        } finally {
+          setIsLoading({ ...isLoading, meetings: false });
+        }
+      }
+    };
+
+    fetchMeetings();
+  }, [activeTab, clientId, meetings.length]);
+
+  // Fetch documents when documents tab is selected
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      if (activeTab === TabType.DOCUMENTS && clientId && !documents.length) {
+        setIsLoading({ ...isLoading, documents: true });
+        
+        try {
+          const fetchedDocuments = await documentApi.getDocuments(clientId);
+          setDocuments(fetchedDocuments);
+        } catch (error) {
+          console.error('Failed to fetch documents:', error);
+        } finally {
+          setIsLoading({ ...isLoading, documents: false });
+        }
+      }
+    };
+
+    fetchDocuments();
+  }, [activeTab, clientId, documents.length]);
+
+  // Handle tab change
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+  };
+
+  // Loading state
+  if (isLoading.client) {
+    return (
+      <div className="p-8">
+        <LoadingSpinner size="large" text="Loading client information..." />
+      </div>
+    );
+  }
+
+  // Error state
+  if (!client) {
+    return (
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+        <strong className="font-bold">Error!</strong>
+        <span className="block sm:inline"> Failed to load client information.</span>
+        <p className="mt-2">{error?.message || 'Client not found'}</p>
+        <div className="mt-4">
+          <Link href="/clients" className="text-red-700 underline">
+            Return to clients list
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white shadow rounded-lg overflow-hidden">
+      {/* Client header */}
+      <div className="bg-blue-700 text-white p-4">
+        <h2 className="text-2xl font-bold">{client.name}</h2>
+        <div className="flex mt-2 text-sm">
+          <div className="mr-6">
+            <span className="opacity-75">Email:</span>{' '}
+            <a href={`mailto:${client.email}`} className="underline">
+              {client.email}
+            </a>
+          </div>
+          {client.phone && (
+            <div>
+              <span className="opacity-75">Phone:</span> {client.phone}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="flex -mb-px">
+          <button
+            onClick={() => handleTabChange(TabType.INFO)}
+            className={`py-4 px-6 font-medium text-sm border-b-2 focus:outline-none ${
+              activeTab === TabType.INFO
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Information
+          </button>
+          <button
+            onClick={() => handleTabChange(TabType.PROJECTS)}
+            className={`py-4 px-6 font-medium text-sm border-b-2 focus:outline-none ${
+              activeTab === TabType.PROJECTS
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Projects
+          </button>
+          <button
+            onClick={() => handleTabChange(TabType.MEETINGS)}
+            className={`py-4 px-6 font-medium text-sm border-b-2 focus:outline-none ${
+              activeTab === TabType.MEETINGS
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Meetings
+          </button>
+          <button
+            onClick={() => handleTabChange(TabType.DOCUMENTS)}
+            className={`py-4 px-6 font-medium text-sm border-b-2 focus:outline-none ${
+              activeTab === TabType.DOCUMENTS
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Documents
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab content */}
+      <div className="p-6">
+        {/* Info tab */}
+        {activeTab === TabType.INFO && (
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Client Details</h3>
+                <dl>
+                  <div className="bg-gray-50 px-4 py-3 sm:grid sm:grid-cols-3 sm:gap-4 rounded-md mb-3">
+                    <dt className="text-sm font-medium text-gray-500">Name</dt>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{client.name}</dd>
+                  </div>
+                  <div className="bg-gray-50 px-4 py-3 sm:grid sm:grid-cols-3 sm:gap-4 rounded-md mb-3">
+                    <dt className="text-sm font-medium text-gray-500">Email</dt>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      <a href={`mailto:${client.email}`} className="text-blue-600 hover:underline">
+                        {client.email}
+                      </a>
+                    </dd>
+                  </div>
+                  <div className="bg-gray-50 px-4 py-3 sm:grid sm:grid-cols-3 sm:gap-4 rounded-md mb-3">
+                    <dt className="text-sm font-medium text-gray-500">Phone</dt>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      {client.phone || 'Not provided'}
+                    </dd>
+                  </div>
+                  <div className="bg-gray-50 px-4 py-3 sm:grid sm:grid-cols-3 sm:gap-4 rounded-md mb-3">
+                    <dt className="text-sm font-medium text-gray-500">Organisation</dt>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      {isLoading.organisation ? (
+                        <span className="text-gray-500">Loading...</span>
+                      ) : organisation ? (
+                        <Link href={`/organisations/${organisation._id}`} className="text-blue-600 hover:underline">
+                          {organisation.name}
+                        </Link>
+                      ) : (
+                        'Not associated with any organisation'
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Additional Information</h3>
+                <dl>
+                  <div className="bg-gray-50 px-4 py-3 sm:grid sm:grid-cols-3 sm:gap-4 rounded-md mb-3">
+                    <dt className="text-sm font-medium text-gray-500">Created</dt>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      {formatDate(client.created_at)}
+                    </dd>
+                  </div>
+                  <div className="bg-gray-50 px-4 py-3 sm:grid sm:grid-cols-3 sm:gap-4 rounded-md mb-3">
+                    <dt className="text-sm font-medium text-gray-500">Last Updated</dt>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      {formatDate(client.updated_at)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+
+            {/* Initial Query */}
+            {client.initial_query && (
+              <div className="mt-8">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Initial Query</h3>
+                <div className="bg-gray-50 p-4 rounded-md">
+                  <p className="text-sm text-gray-700 whitespace-pre-line">{client.initial_query}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            {client.notes && (
+              <div className="mt-8">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
+                <div className="bg-gray-50 p-4 rounded-md">
+                  <p className="text-sm text-gray-700 whitespace-pre-line">{client.notes}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Projects tab */}
+        {activeTab === TabType.PROJECTS && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900">Projects</h3>
+              <Link
+                href={`/projects/new?client_id=${clientId}`}
+                className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700"
+              >
+                Add New Project
+              </Link>
+            </div>
+
+            {isLoading.projects ? (
+              <div className="py-8">
+                <LoadingSpinner text="Loading projects..." />
+              </div>
+            ) : projects.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Title
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Start Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        End Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Budget
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {projects.map((project) => (
+                      <tr key={project._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <Link href={`/projects/${project._id}`} className="text-blue-600 hover:underline">
+                            {project.title}
+                          </Link>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <StatusBadge status={project.status} />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {project.start_date ? formatShortDate(project.start_date) : 'Not set'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {project.end_date ? formatShortDate(project.end_date) : 'Not set'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {project.budget ? `$${project.budget.toLocaleString()}` : 'Not set'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <Link href={`/projects/${project._id}/edit`} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                            Edit
+                          </Link>
+                          <Link href={`/projects/${project._id}`} className="text-blue-600 hover:text-blue-900">
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-gray-50 p-8 text-center rounded-lg">
+                <p className="text-gray-500">No projects found for this client.</p>
+                <Link
+                  href={`/projects/new?client_id=${clientId}`}
+                  className="mt-4 inline-block text-blue-600 hover:underline"
+                >
+                  Create the first project
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Meetings tab */}
+        {activeTab === TabType.MEETINGS && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900">Meetings</h3>
+              <Link
+                href={`/meetings/new?client_id=${clientId}`}
+                className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700"
+              >
+                Schedule Meeting
+              </Link>
+            </div>
+
+            {isLoading.meetings ? (
+              <div className="py-8">
+                <LoadingSpinner text="Loading meetings..." />
+              </div>
+            ) : meetings.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Title
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date & Time
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Location
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Project
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {meetings.map((meeting) => (
+                      <tr key={meeting._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <Link href={`/meetings/${meeting._id}`} className="text-blue-600 hover:underline">
+                            {meeting.title}
+                          </Link>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDateTime(meeting.start_time)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {meeting.virtual 
+                            ? 'Virtual'
+                            : meeting.location || 'Not specified'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {meeting.project_id ? (
+                            <Link href={`/projects/${meeting.project_id}`} className="text-blue-600 hover:underline">
+                              View Project
+                            </Link>
+                          ) : (
+                            'Not specified'
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <Link href={`/meetings/${meeting._id}/edit`} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                            Edit
+                          </Link>
+                          <Link href={`/meetings/${meeting._id}`} className="text-blue-600 hover:text-blue-900">
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-gray-50 p-8 text-center rounded-lg">
+                <p className="text-gray-500">No meetings scheduled with this client.</p>
+                <Link
+                  href={`/meetings/new?client_id=${clientId}`}
+                  className="mt-4 inline-block text-blue-600 hover:underline"
+                >
+                  Schedule a meeting
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Documents tab */}
+        {activeTab === TabType.DOCUMENTS && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900">Documents</h3>
+              <Link
+                href={`/documents/new?client_id=${clientId}`}
+                className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700"
+              >
+                Create Document
+              </Link>
+            </div>
+
+            {isLoading.documents ? (
+              <div className="py-8">
+                <LoadingSpinner text="Loading documents..." />
+              </div>
+            ) : documents.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Title
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Version
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Project
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Last Updated
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {documents.map((document) => (
+                      <tr key={document._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <Link href={`/documents/${document._id}`} className="text-blue-600 hover:underline">
+                            {document.title}
+                          </Link>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {document.document_type}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <StatusBadge status={document.status} />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          v{document.current_version}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {document.project_id ? (
+                            <Link href={`/projects/${document.project_id}`} className="text-blue-600 hover:underline">
+                              View Project
+                            </Link>
+                          ) : (
+                            'Not specified'
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatShortDate(document.updated_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <Link href={`/documents/${document._id}/edit`} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                            Edit
+                          </Link>
+                          <Link href={`/documents/${document._id}`} className="text-blue-600 hover:text-blue-900">
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-gray-50 p-8 text-center rounded-lg">
+                <p className="text-gray-500">No documents found for this client.</p>
+                <Link
+                  href={`/documents/new?client_id=${clientId}`}
+                  className="mt-4 inline-block text-blue-600 hover:underline"
+                >
+                  Create a document
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ClientDetail;
+```
+
 # frontend\components\clients\ClientForm.tsx
 
 ```tsx
@@ -2988,14 +3655,118 @@ export default function ClientForm({ client, isEditing = false }: ClientFormProp
 }
 ```
 
+# frontend\components\common\LoadingSpinner.tsx
+
+```tsx
+// frontend/components/common/LoadingSpinner.tsx
+import React from 'react';
+
+interface LoadingSpinnerProps {
+  size?: 'small' | 'medium' | 'large';
+  text?: string;
+  className?: string;
+}
+
+const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ 
+  size = 'medium', 
+  text = 'Loading...', 
+  className = '' 
+}) => {
+  // Determine spinner size based on prop
+  const spinnerSize = {
+    small: 'h-4 w-4',
+    medium: 'h-8 w-8',
+    large: 'h-12 w-12'
+  }[size];
+
+  return (
+    <div className={`flex items-center justify-center ${className}`}>
+      <div className={`animate-spin rounded-full border-t-2 border-b-2 border-blue-500 ${spinnerSize}`}></div>
+      {text && <span className="ml-3 text-gray-700">{text}</span>}
+    </div>
+  );
+};
+
+export default LoadingSpinner;
+```
+
+# frontend\components\common\StatusBadge.tsx
+
+```tsx
+// frontend/components/common/StatusBadge.tsx
+import React from 'react';
+
+type StatusType = 'draft' | 'pending' | 'in_progress' | 'completed' | 'signed' | 'assessment' | 'default';
+
+interface StatusBadgeProps {
+  status: string;
+  className?: string;
+}
+
+const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
+  // Map status to a normalized status type
+  const normalizedStatus = getNormalizedStatus(status);
+  
+  // Map status type to color scheme
+  const colorScheme = getColorScheme(normalizedStatus);
+  
+  return (
+    <span
+      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${colorScheme} ${className}`}
+    >
+      {status}
+    </span>
+  );
+};
+
+// Helper function to normalize various status strings
+function getNormalizedStatus(status: string): StatusType {
+  const normalized = status.toLowerCase();
+  
+  if (normalized.includes('draft')) return 'draft';
+  if (normalized.includes('pend') || normalized.includes('wait')) return 'pending';
+  if (normalized.includes('progress') || normalized.includes('active')) return 'in_progress';
+  if (normalized.includes('complete') || normalized.includes('done') || normalized.includes('finish')) return 'completed';
+  if (normalized.includes('sign')) return 'signed';
+  if (normalized.includes('assess')) return 'assessment';
+  
+  return 'default';
+}
+
+// Helper function to map status type to color scheme
+function getColorScheme(status: StatusType): string {
+  switch (status) {
+    case 'draft':
+      return 'bg-gray-100 text-gray-800';
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'in_progress':
+      return 'bg-blue-100 text-blue-800';
+    case 'completed':
+      return 'bg-green-100 text-green-800';
+    case 'signed':
+      return 'bg-green-100 text-green-800';
+    case 'assessment':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'default':
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
+
+export default StatusBadge;
+```
+
 # frontend\components\Layout.tsx
 
 ```tsx
 // frontend/components/Layout.tsx
-import React, { ReactNode, useState, useEffect } from 'react';
+import React, { ReactNode, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import { useAuth } from '../context/AuthContext';
+import LoadingSpinner from './common/LoadingSpinner';
 
 type LayoutProps = {
   children: ReactNode;
@@ -3007,59 +3778,41 @@ export default function Layout({
   title = 'Rogue Drones Client Workflow' 
 }: LayoutProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [authError, setAuthError] = useState<boolean>(false);
+  const { user, logout, loading } = useAuth();
   const router = useRouter();
 
-  // Fetch user info on component mount
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        // If no token, redirect to login
-        router.push('/login');
-        return;
-      }
+  // If auth context is loading, show a loading spinner
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <LoadingSpinner size="large" text="Loading..." />
+      </div>
+    );
+  }
 
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        console.log('Fetching user info from:', `${apiUrl}/api/v1/auth/me`);
-        
-        const response = await fetch(
-          `${apiUrl}/api/v1/auth/me`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        );
-        
-        if (response.ok) {
-          const userData = await response.json();
-          setUserName(`${userData.first_name} ${userData.last_name}`);
-        } else if (response.status === 401 || response.status === 403) {
-          // Unauthorized - token may be expired
-          localStorage.removeItem('token');
-          router.push('/login');
-        } else {
-          console.error('Error fetching user info:', response.status);
-          setAuthError(true);
-        }
-      } catch (error) {
-        console.error('Error fetching user info:', error);
-        setAuthError(true);
-      }
-    };
-
-    if (router.pathname !== '/login' && router.pathname !== '/register') {
-      fetchUserInfo();
-    }
-  }, [router]);
+  // If no user and not on login/register page, redirect is handled by AuthContext
+  // We just don't render anything here
+  if (!user && !router.pathname.includes('/login') && !router.pathname.includes('/register')) {
+    return null;
+  }
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    router.push('/login');
+    logout();
   };
+
+  // Don't render the layout for login/register pages
+  if (router.pathname === '/login' || router.pathname === '/register') {
+    return (
+      <>
+        <Head>
+          <title>{title}</title>
+          <meta name="description" content="Client workflow management system for Rogue Drones" />
+          <link rel="icon" href="/favicon.ico" />
+        </Head>
+        {children}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -3068,14 +3821,6 @@ export default function Layout({
         <meta name="description" content="Client workflow management system for Rogue Drones" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-
-      {/* Show API error banner if needed */}
-      {authError && (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4" role="alert">
-          <p className="font-bold">API Connection Issue</p>
-          <p>Unable to connect to the backend API. Please ensure the server is running at {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}</p>
-        </div>
-      )}
 
       {/* Header */}
       <header className="bg-blue-700 text-white shadow-md">
@@ -3108,8 +3853,8 @@ export default function Layout({
 
             {/* User menu */}
             <div className="flex items-center">
-              {userName && (
-                <span className="mr-4 hidden md:inline">{userName}</span>
+              {user && (
+                <span className="mr-4 hidden md:inline">{user.first_name} {user.last_name}</span>
               )}
               <button
                 onClick={handleLogout}
@@ -3179,8 +3924,8 @@ export default function Layout({
               >
                 Organizations
               </Link>
-              {userName && (
-                <div className="py-2 text-sm text-blue-200">{userName}</div>
+              {user && (
+                <div className="py-2 text-sm text-blue-200">{user.first_name} {user.last_name}</div>
               )}
             </nav>
           )}
@@ -3218,6 +3963,187 @@ export default function Layout({
     </div>
   );
 }
+```
+
+# frontend\context\AuthContext.tsx
+
+```tsx
+// frontend/context/AuthContext.tsx
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useRouter } from 'next/router';
+import axios from 'axios';
+
+// Define the User interface
+interface User {
+  _id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  is_active: boolean;
+  is_admin: boolean;
+}
+
+// Define the Auth context interface
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  isAuthenticated: boolean;
+}
+
+// Create the Auth context
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Define the props for AuthProvider
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+// Create the Auth provider component
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
+  
+  // Public routes that don't need redirect to login
+  const publicRoutes = ['/login', '/register'];
+
+  // Check if the user is already logged in on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      
+      // If no token and not on a public route, redirect to login
+      if (!token) {
+        setLoading(false);
+        setUser(null);
+        
+        // Only redirect if not already on a public route
+        if (!publicRoutes.includes(router.pathname)) {
+          router.push('/login');
+        }
+        return;
+      }
+
+      try {
+        const response = await axios.get(`${API_URL}/api/v1/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        setUser(response.data);
+        setError(null);
+        
+        // If authenticated and on login page, redirect to home
+        if (publicRoutes.includes(router.pathname)) {
+          router.push('/');
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err);
+        // Clear token if invalid
+        localStorage.removeItem('token');
+        setUser(null);
+        
+        // Redirect to login if not already there
+        if (!publicRoutes.includes(router.pathname)) {
+          router.push('/login');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [API_URL, router.pathname]);
+
+  // Login function
+  const login = async (email: string, password: string): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Convert email/password to FormData for OAuth2 compatibility
+      const formData = new FormData();
+      formData.append('username', email);
+      formData.append('password', password);
+      
+      const response = await axios.post(
+        `${API_URL}/api/v1/auth/login`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      // Save token to localStorage
+      localStorage.setItem('token', response.data.access_token);
+
+      // Fetch user info
+      const userResponse = await axios.get(`${API_URL}/api/v1/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${response.data.access_token}`
+        }
+      });
+
+      setUser(userResponse.data);
+      router.push('/');
+      return true;
+    } catch (err: any) {
+      console.error('Login error:', err);
+      if (err.response) {
+        if (err.response.status === 401) {
+          setError('Invalid email or password');
+        } else if (err.response.data?.detail) {
+          setError(err.response.data.detail);
+        } else {
+          setError(`Server error: ${err.response.status}`);
+        }
+      } else if (err.request) {
+        setError('No response from server. Please check if the backend is running.');
+      } else {
+        setError(err.message || 'An error occurred during login. Please try again.');
+      }
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Logout function
+  const logout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+    router.push('/login');
+  };
+
+  const value = {
+    user,
+    loading,
+    error,
+    login,
+    logout,
+    isAuthenticated: !!user,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+// Custom hook to use the Auth context
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 ```
 
 # frontend\Dockerfile
@@ -3294,34 +4220,81 @@ export const withApiStatus = async <T extends any>(
 };
 ```
 
+# frontend\lib\api\apiClient.ts
+
+```ts
+// frontend/lib/api/apiClient.ts
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
+
+// Create a base API client that handles auth and errors
+export const createApiClient = (): AxiosInstance => {
+  const client = axios.create({
+    baseURL: API_URL,
+    timeout: 10000,
+  });
+
+  // Request interceptor to add auth token
+  client.interceptors.request.use(
+    (config) => {
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
+      // If token exists, add it to headers
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      
+      console.log(`Making request to: ${config.baseURL}${config.url}`);
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
+    }
+  );
+
+  // Response interceptor to handle errors
+  client.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    (error) => {
+      if (error.response) {
+        // Handle 401 Unauthorized errors by redirecting to login
+        if (error.response.status === 401) {
+          console.error('Unauthorized: Token might be expired');
+          
+          // If we're in a browser environment
+          if (typeof window !== 'undefined') {
+            // Clear token
+            localStorage.removeItem('token');
+            
+            // Redirect to login
+            window.location.href = '/login';
+          }
+        }
+      }
+      
+      return Promise.reject(error);
+    }
+  );
+
+  return client;
+};
+
+// Create a singleton instance of the API client
+export const apiClient = createApiClient();
+```
+
 # frontend\lib\api\clientApi.ts
 
 ```ts
 // frontend/lib/api/clientApi.ts
-import axios from 'axios';
 import { Client, ClientCreate, ClientUpdate } from '../../types/client';
+import { apiClient } from './apiClient';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
 const API_PATH = '/api/v1/clients';
-
-console.log('API URL:', API_URL); // Debug log
-
-// Configure axios instance with default headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-  // Add timeout to avoid hanging requests
-  timeout: 10000,
-});
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  console.log(`Making request to: ${config.baseURL}${config.url}`); // Debug log
-  return config;
-});
 
 export const clientApi = {
   // Fetch all clients
@@ -3356,29 +4329,144 @@ export const clientApi = {
 };
 ```
 
+# frontend\lib\api\documentApi.ts
+
+```ts
+// frontend/lib/api/documentApi.ts
+import { Document, DocumentCreate, DocumentUpdate } from '../../types/document';
+import { apiClient } from './apiClient';
+
+const API_PATH = '/api/v1/documents';
+
+export const documentApi = {
+  // Fetch all documents
+  async getDocuments(clientId?: string, projectId?: string, documentType?: string, status?: string): Promise<Document[]> {
+    const params: Record<string, string> = {};
+    if (clientId) params['client_id'] = clientId;
+    if (projectId) params['project_id'] = projectId;
+    if (documentType) params['document_type'] = documentType;
+    if (status) params['status'] = status;
+    
+    const response = await apiClient.get(`${API_PATH}/`, { params });
+    return response.data;
+  },
+
+  // Fetch a single document by ID
+  async getDocument(id: string): Promise<Document> {
+    const response = await apiClient.get(`${API_PATH}/${id}`);
+    return response.data;
+  },
+
+  // Create a new document
+  async createDocument(document: DocumentCreate): Promise<Document> {
+    const response = await apiClient.post(`${API_PATH}/`, document);
+    return response.data;
+  },
+
+  // Update an existing document
+  async updateDocument(id: string, document: DocumentUpdate): Promise<Document> {
+    const response = await apiClient.put(`${API_PATH}/${id}`, document);
+    return response.data;
+  },
+
+  // Delete a document
+  async deleteDocument(id: string): Promise<{ message: string }> {
+    const response = await apiClient.delete(`${API_PATH}/${id}`);
+    return response.data;
+  },
+  
+  // Sign a document
+  async signDocument(id: string): Promise<Document> {
+    const response = await apiClient.post(`${API_PATH}/${id}/sign`);
+    return response.data;
+  }
+};
+```
+
+# frontend\lib\api\index.ts
+
+```ts
+// frontend/lib/api/index.ts
+// Re-export all API functions from a single file for easier imports
+export * from './clientApi';
+export * from './organisationApi';
+export * from './projectApi';
+export * from './meetingApi';
+export * from './documentApi';
+```
+
+# frontend\lib\api\meetingApi.ts
+
+```ts
+// frontend/lib/api/meetingApi.ts
+import { Meeting, MeetingCreate, MeetingUpdate } from '../../types/meeting';
+import { apiClient } from './apiClient';
+
+const API_PATH = '/api/v1/meetings';
+
+export const meetingApi = {
+  // Fetch all meetings
+  async getMeetings(clientId?: string, projectId?: string): Promise<Meeting[]> {
+    const params: Record<string, string> = {};
+    if (clientId) params['client_id'] = clientId;
+    if (projectId) params['project_id'] = projectId;
+    
+    const response = await apiClient.get(`${API_PATH}/`, { params });
+    return response.data;
+  },
+
+  // Fetch a single meeting by ID
+  async getMeeting(id: string): Promise<Meeting> {
+    const response = await apiClient.get(`${API_PATH}/${id}`);
+    return response.data;
+  },
+
+  // Create a new meeting
+  async createMeeting(meeting: MeetingCreate): Promise<Meeting> {
+    const response = await apiClient.post(`${API_PATH}/`, meeting);
+    return response.data;
+  },
+
+  // Update an existing meeting
+  async updateMeeting(id: string, meeting: MeetingUpdate): Promise<Meeting> {
+    const response = await apiClient.put(`${API_PATH}/${id}`, meeting);
+    return response.data;
+  },
+
+  // Delete a meeting
+  async deleteMeeting(id: string): Promise<{ message: string }> {
+    const response = await apiClient.delete(`${API_PATH}/${id}`);
+    return response.data;
+  },
+  
+  // Add transcript to a meeting
+  async addTranscript(id: string, transcript: string): Promise<Meeting> {
+    const response = await apiClient.post(`${API_PATH}/${id}/transcript`, { transcript });
+    return response.data;
+  },
+  
+  // Add key points to a meeting
+  async addKeyPoints(id: string, keyPoints: any[]): Promise<Meeting> {
+    const response = await apiClient.post(`${API_PATH}/${id}/key_points`, { key_points: keyPoints });
+    return response.data;
+  },
+  
+  // Add recording URL to a meeting
+  async addRecording(id: string, recordingUrl: string): Promise<Meeting> {
+    const response = await apiClient.post(`${API_PATH}/${id}/recording`, { recording_url: recordingUrl });
+    return response.data;
+  }
+};
+```
+
 # frontend\lib\api\organisationApi.ts
 
 ```ts
 // frontend/lib/api/organisationApi.ts
-import axios from 'axios';
 import { Organisation } from '../../types/client';
+import { apiClient } from './apiClient';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
 const API_PATH = '/api/v1/organisations';
-
-// Configure axios instance with default headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-});
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export const organisationApi = {
   // Fetch all organisations
@@ -3390,6 +4478,66 @@ export const organisationApi = {
   // Fetch a single organisation by ID
   async getOrganisation(id: string): Promise<Organisation> {
     const response = await apiClient.get(`${API_PATH}/${id}`);
+    return response.data;
+  }
+};
+```
+
+# frontend\lib\api\projectApi.ts
+
+```ts
+// frontend/lib/api/projectApi.ts
+import axios from 'axios';
+import { Project, ProjectCreate, ProjectUpdate } from '../../types/project';
+
+const API_PATH = '/api/v1/projects';
+
+// Configure axios instance with default headers
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+const apiClient = axios.create({
+  baseURL: API_URL,
+  timeout: 10000,
+});
+
+// Request interceptor to add auth token
+apiClient.interceptors.request.use((config) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export const projectApi = {
+  // Fetch all projects
+  async getProjects(clientId?: string): Promise<Project[]> {
+    const params = clientId ? { client_id: clientId } : {};
+    const response = await apiClient.get(`${API_PATH}/`, { params });
+    return response.data;
+  },
+
+  // Fetch a single project by ID
+  async getProject(id: string): Promise<Project> {
+    const response = await apiClient.get(`${API_PATH}/${id}`);
+    return response.data;
+  },
+
+  // Create a new project
+  async createProject(project: ProjectCreate): Promise<Project> {
+    const response = await apiClient.post(`${API_PATH}/`, project);
+    return response.data;
+  },
+
+  // Update an existing project
+  async updateProject(id: string, project: ProjectUpdate): Promise<Project> {
+    const response = await apiClient.put(`${API_PATH}/${id}`, project);
+    return response.data;
+  },
+
+  // Delete a project
+  async deleteProject(id: string): Promise<{ message: string }> {
+    const response = await apiClient.delete(`${API_PATH}/${id}`);
     return response.data;
   }
 };
@@ -3694,10 +4842,15 @@ export const getValidationErrors = (error: any): Record<string, string> => {
 ```tsx
 // frontend/pages/_app.tsx
 import { AppProps } from 'next/app';
+import { AuthProvider } from '../context/AuthContext';
 import '../styles/globals.css';
 
 function MyApp({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
+  return (
+    <AuthProvider>
+      <Component {...pageProps} />
+    </AuthProvider>
+  );
 }
 
 export default MyApp;
@@ -3707,238 +4860,49 @@ export default MyApp;
 
 ```tsx
 // frontend/pages/clients/[id].tsx
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../../components/Layout';
+import ClientDetail from '../../components/clients/ClientDetail';
 import ApiHealthCheck from '../../components/ApiHealthCheck';
-import { clientApi } from '../../lib/api/clientApi';
-import { organisationApi } from '../../lib/api/organisationApi';
-import { Client, Organisation } from '../../types/client';
-import { useApiStatus, withApiStatus } from '../../hooks/useApiStatus';
-import { format } from 'date-fns';
 
 export default function ClientDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const [client, setClient] = useState<Client | null>(null);
-  const [organisation, setOrganisation] = useState<Organisation | null>(null);
-  const { status, isLoading, isError, error, setStatus, setError } = useApiStatus();
-
-  useEffect(() => {
-    const fetchClient = async () => {
-      if (typeof id !== 'string') return;
-
-      const result = await withApiStatus(
-        () => clientApi.getClient(id),
-        { setStatus, setError }
-      );
-
-      if (result) {
-        setClient(result);
-        
-        // Fetch organisation details if client has an organisation
-        if (result.organisation_id) {
-          const org = await organisationApi.getOrganisation(result.organisation_id);
-          setOrganisation(org);
-        }
-      }
-    };
-
-    if (id) {
-      fetchClient();
-    }
-  }, [id]);
-
-  const handleDelete = async () => {
-    if (!client) return;
-    
-    if (window.confirm('Are you sure you want to delete this client?')) {
-      const result = await withApiStatus(
-        () => clientApi.deleteClient(client._id),
-        { setStatus, setError }
-      );
-
-      if (result) {
-        router.push('/clients');
-      }
-    }
-  };
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    try {
-      return format(new Date(dateString), 'PPP');
-    } catch (e) {
-      return dateString;
-    }
-  };
 
   return (
-    <Layout title={client ? `${client.name} | Rogue Drones` : 'Client | Rogue Drones'}>
+    <Layout title="Client Details | Rogue Drones">
       <div className="container mx-auto px-4 py-8">
         <ApiHealthCheck />
         
-        {/* Loading state */}
-        {isLoading && (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            <p className="mt-2">Loading client...</p>
-          </div>
-        )}
-
-        {/* Error state */}
-        {isError && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            <p className="font-bold">Error</p>
-            <p>{error?.message || 'Failed to load client details'}</p>
-            <div className="mt-2">
-              <Link href="/clients" className="text-red-700 underline">
-                Return to clients list
+        <div className="mb-6 flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Client Details</h1>
+          <div className="space-x-4">
+            {typeof id === 'string' && (
+              <Link
+                href={`/clients/${id}/edit`}
+                className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
+              >
+                Edit Client
               </Link>
-            </div>
+            )}
+            <Link
+              href="/clients"
+              className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
+            >
+              Back to Clients
+            </Link>
+          </div>
+        </div>
+
+        {typeof id === 'string' ? (
+          <ClientDetail clientId={id} />
+        ) : (
+          <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4">
+            <p className="font-bold">Loading...</p>
+            <p>Waiting for client ID parameter.</p>
           </div>
         )}
-
-        {/* Client details */}
-        {client && !isLoading && (
-          <>
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold">{client.name}</h1>
-              <div className="space-x-4">
-                <Link
-                  href={`/clients/${client._id}/edit`}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-                >
-                  Edit
-                </Link>
-                <button
-                  onClick={handleDelete}
-                  className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-              <div className="px-4 py-5 sm:px-6 bg-gray-50">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  Client Information
-                </h3>
-              </div>
-              <div className="border-t border-gray-200">
-                <dl>
-                  <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Full name</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      {client.name}
-                    </dd>
-                  </div>
-                  <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Email address</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      <a href={`mailto:${client.email}`} className="text-blue-600 hover:underline">
-                        {client.email}
-                      </a>
-                    </dd>
-                  </div>
-                  <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Phone number</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      {client.phone || 'Not provided'}
-                    </dd>
-                  </div>
-                  <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Organisation</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      {organisation ? (
-                        <Link href={`/organisations/${organisation._id}`} className="text-blue-600 hover:underline">
-                          {organisation.name}
-                        </Link>
-                      ) : (
-                        'Not associated with any organisation'
-                      )}
-                    </dd>
-                  </div>
-                  <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Created at</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      {formatDate(client.created_at)}
-                    </dd>
-                  </div>
-                  <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Updated at</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      {formatDate(client.updated_at)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
-
-            {/* Notes section */}
-            {client.notes && (
-              <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                <div className="px-4 py-5 sm:px-6 bg-gray-50">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">Notes</h3>
-                </div>
-                <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-                  <p className="text-sm text-gray-900 whitespace-pre-line">{client.notes}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Initial Query section */}
-            {client.initial_query && (
-              <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                <div className="px-4 py-5 sm:px-6 bg-gray-50">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">Initial Query</h3>
-                </div>
-                <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-                  <p className="text-sm text-gray-900 whitespace-pre-line">{client.initial_query}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Related sections - would usually be linked to projects, meetings, etc. */}
-            <div className="mt-8 space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold mb-4">Projects</h2>
-                <div className="bg-white shadow rounded-lg p-4">
-                  <Link href={`/projects?client_id=${client._id}`} className="text-blue-600 hover:underline">
-                    View client projects
-                  </Link>
-                </div>
-              </div>
-              
-              <div>
-                <h2 className="text-xl font-semibold mb-4">Meetings</h2>
-                <div className="bg-white shadow rounded-lg p-4">
-                  <Link href={`/meetings?client_id=${client._id}`} className="text-blue-600 hover:underline">
-                    View client meetings
-                  </Link>
-                </div>
-              </div>
-              
-              <div>
-                <h2 className="text-xl font-semibold mb-4">Documents</h2>
-                <div className="bg-white shadow rounded-lg p-4">
-                  <Link href={`/documents?client_id=${client._id}`} className="text-blue-600 hover:underline">
-                    View client documents
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-        
-        {/* Back button */}
-        <div className="mt-8">
-          <Link href="/clients" className="text-blue-600 hover:underline">
-            &larr; Back to Clients
-          </Link>
-        </div>
       </div>
     </Layout>
   );
@@ -4250,27 +5214,24 @@ export default function NewClientPage() {
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 
 export default function Home() {
   const router = useRouter();
+  const { isAuthenticated, user } = useAuth();
 
-  useEffect(() => {
-    // Check if user is authenticated
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    }
-  }, [router]);
-
-    // Don’t render the dashboard until we know we’re logged in
-  if (typeof window !== 'undefined' && !localStorage.getItem('token')) {
-    return null;
-  }
-
+  // Render the dashboard only if authenticated
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6">Rogue Drones Client Workflow</h1>
+        
+        {user && (
+          <div className="bg-blue-50 border-l-4 border-blue-500 text-blue-700 p-4 mb-6">
+            <p className="font-semibold">Welcome, {user.first_name} {user.last_name}!</p>
+            <p>You are logged in to the Rogue Drones client management system.</p>
+          </div>
+        )}
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-lg shadow-md">
@@ -4321,7 +5282,7 @@ export default function Home() {
             <h2 className="text-xl font-semibold mb-4">Organizations</h2>
             <p className="text-gray-600 mb-4">Manage client organizations</p>
             <button
-              onClick={() => router.push('/organizations')}
+              onClick={() => router.push('/organisations')}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             >
               View Organizations
@@ -4339,10 +5300,10 @@ export default function Home() {
 ```tsx
 // frontend/pages/login.tsx
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
 import { useForm } from 'react-hook-form';
-import axios from 'axios';
 import Link from 'next/link';
+import { useAuth } from '../context/AuthContext';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 type LoginFormData = {
   email: string;
@@ -4350,10 +5311,9 @@ type LoginFormData = {
 };
 
 export default function Login() {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [apiUrl, setApiUrl] = useState<string>('');
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'running' | 'error'>('checking');
+  const { login, error: authError, loading } = useAuth();
   
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>();
   
@@ -4373,9 +5333,10 @@ export default function Login() {
         // Try to access the health check endpoint
         await fetch(`${apiUrl}/health`, { method: 'GET' });
         console.log('Backend is running');
+        setBackendStatus('running');
       } catch (err) {
         console.error('Backend connection error:', err);
-        setError('Cannot connect to the backend server. Please ensure it is running.');
+        setBackendStatus('error');
       }
     };
     
@@ -4383,57 +5344,7 @@ export default function Login() {
   }, [apiUrl]);
   
   const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      console.log(`Attempting to login at ${apiUrl}/api/v1/auth/login`);
-      
-      // Convert email/password to FormData for OAuth2 compatibility
-      const formData = new FormData();
-      formData.append('username', data.email);
-      formData.append('password', data.password);
-      
-      const response = await axios.post(
-        `${apiUrl}/api/v1/auth/login`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-      
-      console.log('Login response:', response.data);
-      
-      // Save token to localStorage
-      localStorage.setItem('token', response.data.access_token);
-      
-      // Redirect to dashboard
-      router.push('/');
-    } catch (err: any) {
-      console.error('Login error:', err);
-      
-      if (err.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        if (err.response.status === 401) {
-          setError('Invalid email or password');
-        } else if (err.response.data?.detail) {
-          setError(err.response.data.detail);
-        } else {
-          setError(`Server error: ${err.response.status}`);
-        }
-      } else if (err.request) {
-        // The request was made but no response was received
-        setError('No response from server. Please check if the backend is running.');
-      } else {
-        // Something happened in setting up the request
-        setError(err.message || 'An error occurred during login. Please try again.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    await login(data.email, data.password);
   };
   
   return (
@@ -4445,9 +5356,15 @@ export default function Login() {
         
         <h2 className="text-xl font-semibold mb-6">Login</h2>
         
-        {error && (
+        {authError && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+            {authError}
+          </div>
+        )}
+
+        {backendStatus === 'error' && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            Cannot connect to the backend server. Please ensure it is running at {apiUrl}
           </div>
         )}
         
@@ -4506,11 +5423,18 @@ export default function Login() {
             <button
               type="submit"
               className={`bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                loading ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              disabled={isLoading}
+              disabled={loading}
             >
-              {isLoading ? 'Logging in...' : 'Login'}
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 mr-2 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
+                  <span>Logging in...</span>
+                </div>
+              ) : (
+                'Login'
+              )}
             </button>
             
             <Link
@@ -4526,7 +5450,9 @@ export default function Login() {
         <div className="mt-8 text-xs text-gray-500">
           <p>Connecting to API: {apiUrl}</p>
           <p className="mt-1">
-            If you're experiencing connection issues, please make sure the backend server is running.
+            {backendStatus === 'checking' && 'Checking connection to backend...'}
+            {backendStatus === 'running' && 'Backend server is running.'}
+            {backendStatus === 'error' && 'Cannot connect to backend server.'}
           </p>
         </div>
       </div>
@@ -4828,5 +5754,373 @@ export interface Organisation {
   industry?: string;
   location?: string;
 }
+```
+
+# frontend\types\document.ts
+
+```ts
+// frontend/types/document.ts
+
+// Document version properties
+export interface DocumentVersionBase {
+  version_number: number;
+  content: string;
+  created_by: string;
+  notes?: string;
+}
+
+// Interface for document version creation
+export interface DocumentVersionCreate extends DocumentVersionBase {}
+
+// Full document version model
+export interface DocumentVersion extends DocumentVersionBase {
+  created_at: string;
+}
+
+// Base document properties
+export interface DocumentBase {
+  title: string;
+  document_type: string;
+  client_id: string;
+  project_id?: string;
+  status: string;
+  requires_signature: boolean;
+}
+
+// Interface for document creation
+export interface DocumentCreate extends DocumentBase {
+  content: string; // Initial content for version 1
+}
+
+// Interface for document updates
+export interface DocumentUpdate {
+  title?: string;
+  document_type?: string;
+  client_id?: string;
+  project_id?: string;
+  status?: string;
+  requires_signature?: boolean;
+  new_version_content?: string;
+  new_version_notes?: string;
+}
+
+// Full document model including server-generated fields
+export interface Document extends DocumentBase {
+  _id: string;
+  current_version: number;
+  versions: DocumentVersion[];
+  signed: boolean;
+  signed_at?: string;
+  signed_by?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+```
+
+# frontend\types\index.ts
+
+```ts
+// frontend/types/index.ts
+
+// Re-export all types from individual files
+export * from './client';
+export * from './project';
+export * from './meeting';
+export * from './document';
+```
+
+# frontend\types\meeting.ts
+
+```ts
+// frontend/types/meeting.ts
+
+// Meeting attendee properties
+export interface MeetingAttendeeBase {
+  name: string;
+  email?: string;
+  organisation?: string;
+  role?: string;
+}
+
+// Interface for meeting attendee creation
+export interface MeetingAttendeeCreate extends MeetingAttendeeBase {}
+
+// Full meeting attendee model
+export interface MeetingAttendee extends MeetingAttendeeBase {}
+
+// Key point properties
+export interface KeyPointBase {
+  content: string;
+  category?: string;
+}
+
+// Interface for key point creation
+export interface KeyPointCreate extends KeyPointBase {}
+
+// Full key point model
+export interface KeyPoint extends KeyPointBase {}
+
+// Base meeting properties
+export interface MeetingBase {
+  title: string;
+  description?: string;
+  client_id: string;
+  project_id?: string;
+  start_time: string;
+  end_time?: string;
+  location?: string;
+  virtual: boolean;
+  meeting_url?: string;
+  notes?: string;
+}
+
+// Interface for meeting creation
+export interface MeetingCreate extends MeetingBase {
+  attendees?: MeetingAttendeeCreate[];
+}
+
+// Interface for meeting updates
+export interface MeetingUpdate {
+  title?: string;
+  description?: string;
+  client_id?: string;
+  project_id?: string;
+  start_time?: string;
+  end_time?: string;
+  location?: string;
+  virtual?: boolean;
+  meeting_url?: string;
+  attendees?: MeetingAttendeeCreate[];
+  recording_url?: string;
+  transcript?: string;
+  key_points?: KeyPointCreate[];
+  notes?: string;
+}
+
+// Full meeting model including server-generated fields
+export interface Meeting extends MeetingBase {
+  _id: string;
+  attendees: MeetingAttendee[];
+  recording_url?: string;
+  transcript?: string;
+  key_points: KeyPoint[];
+  created_at: string;
+  updated_at: string;
+}
+```
+
+# frontend\types\project.ts
+
+```ts
+// frontend/types/project.ts
+
+// Base milestone properties
+export interface MilestoneBase {
+  title: string;
+  description?: string;
+  due_date?: string;
+  completed: boolean;
+  completed_at?: string;
+}
+
+// Interface for milestone creation
+export interface MilestoneCreate extends MilestoneBase {}
+
+// Interface for milestone updates
+export interface MilestoneUpdate {
+  title?: string;
+  description?: string;
+  due_date?: string;
+  completed?: boolean;
+  completed_at?: string;
+}
+
+// Full milestone model
+export interface Milestone extends MilestoneBase {}
+
+// Base project properties
+export interface ProjectBase {
+  title: string;
+  description?: string;
+  client_id: string;
+  organisation_id?: string;
+  status: string;
+  budget?: number;
+  start_date?: string;
+  end_date?: string;
+  assessment_score?: number;
+  notes?: string;
+}
+
+// Interface for project creation
+export interface ProjectCreate extends ProjectBase {
+  milestones?: MilestoneCreate[];
+}
+
+// Interface for project updates
+export interface ProjectUpdate {
+  title?: string;
+  description?: string;
+  client_id?: string;
+  organisation_id?: string;
+  status?: string;
+  budget?: number;
+  start_date?: string;
+  end_date?: string;
+  assessment_score?: number;
+  notes?: string;
+  milestones?: MilestoneCreate[];
+}
+
+// Full project model including server-generated fields
+export interface Project extends ProjectBase {
+  _id: string;
+  milestones: Milestone[];
+  created_at: string;
+  updated_at: string;
+}
+
+// frontend/types/meeting.ts
+
+// Meeting attendee properties
+export interface MeetingAttendeeBase {
+  name: string;
+  email?: string;
+  organisation?: string;
+  role?: string;
+}
+
+// Interface for meeting attendee creation
+export interface MeetingAttendeeCreate extends MeetingAttendeeBase {}
+
+// Full meeting attendee model
+export interface MeetingAttendee extends MeetingAttendeeBase {}
+
+// Key point properties
+export interface KeyPointBase {
+  content: string;
+  category?: string;
+}
+
+// Interface for key point creation
+export interface KeyPointCreate extends KeyPointBase {}
+
+// Full key point model
+export interface KeyPoint extends KeyPointBase {}
+
+// Base meeting properties
+export interface MeetingBase {
+  title: string;
+  description?: string;
+  client_id: string;
+  project_id?: string;
+  start_time: string;
+  end_time?: string;
+  location?: string;
+  virtual: boolean;
+  meeting_url?: string;
+  notes?: string;
+}
+
+// Interface for meeting creation
+export interface MeetingCreate extends MeetingBase {
+  attendees?: MeetingAttendeeCreate[];
+}
+
+// Interface for meeting updates
+export interface MeetingUpdate {
+  title?: string;
+  description?: string;
+  client_id?: string;
+  project_id?: string;
+  start_time?: string;
+  end_time?: string;
+  location?: string;
+  virtual?: boolean;
+  meeting_url?: string;
+  attendees?: MeetingAttendeeCreate[];
+  recording_url?: string;
+  transcript?: string;
+  key_points?: KeyPointCreate[];
+  notes?: string;
+}
+
+// Full meeting model including server-generated fields
+export interface Meeting extends MeetingBase {
+  _id: string;
+  attendees: MeetingAttendee[];
+  recording_url?: string;
+  transcript?: string;
+  key_points: KeyPoint[];
+  created_at: string;
+  updated_at: string;
+}
+
+// frontend/types/document.ts
+
+// Document version properties
+export interface DocumentVersionBase {
+  version_number: number;
+  content: string;
+  created_by: string;
+  notes?: string;
+}
+
+// Interface for document version creation
+export interface DocumentVersionCreate extends DocumentVersionBase {}
+
+// Full document version model
+export interface DocumentVersion extends DocumentVersionBase {
+  created_at: string;
+}
+
+// Base document properties
+export interface DocumentBase {
+  title: string;
+  document_type: string;
+  client_id: string;
+  project_id?: string;
+  status: string;
+  requires_signature: boolean;
+}
+
+// Interface for document creation
+export interface DocumentCreate extends DocumentBase {
+  content: string; // Initial content for version 1
+}
+
+// Interface for document updates
+export interface DocumentUpdate {
+  title?: string;
+  document_type?: string;
+  client_id?: string;
+  project_id?: string;
+  status?: string;
+  requires_signature?: boolean;
+  new_version_content?: string;
+  new_version_notes?: string;
+}
+
+// Full document model including server-generated fields
+export interface Document extends DocumentBase {
+  _id: string;
+  current_version: number;
+  versions: DocumentVersion[];
+  signed: boolean;
+  signed_at?: string;
+  signed_by?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// frontend/types/index.ts
+
+// Re-export all interfaces from a single file for easier imports
+export * from './client';
+export * from './project';
+export * from './meeting';
+export * from './document';
 ```
 
