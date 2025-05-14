@@ -1,0 +1,62 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    networks:
+      - rogue-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "9091:9090"  # Maps host port 9091 to container port 9090
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URL=mongodb://admin:password@mongodb:27017/
+      - JWT_SECRET=change_this_to_a_secure_secret
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - ENVIRONMENT=development
+    networks:
+      - rogue-network
+    restart: always  # Add restart policy for better resilience
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "4200:3000"  # Maps host port 4200 to container port 3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:9090
+    networks:
+      - rogue-network
+    restart: always  # Add restart policy
+
+networks:
+  rogue-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:

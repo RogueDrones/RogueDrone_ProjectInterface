@@ -1,0 +1,51 @@
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+.env*
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+venv/
+env/
+ENV/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# Docker
+*.pid
+
+# Test/coverage
+coverage/
+*.cover
+*.py,cover
+.hypothesis/
+
+# Misc
+*.log
+*.tsbuildinfo
+
+# Ignore build artifacts
+build/
+dist/
+
+# Ignore local config
+*.sqlite3
+*.db
+
+# Ignore Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
