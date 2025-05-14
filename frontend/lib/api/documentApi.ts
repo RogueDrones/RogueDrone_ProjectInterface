@@ -1,24 +1,8 @@
 // frontend/lib/api/documentApi.ts
-import axios from 'axios';
 import { Document, DocumentCreate, DocumentUpdate } from '../../types/document';
+import { apiClient } from './apiClient';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
 const API_PATH = '/api/v1/documents';
-
-// Configure axios instance with default headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-  timeout: 10000,
-});
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export const documentApi = {
   // Fetch all documents

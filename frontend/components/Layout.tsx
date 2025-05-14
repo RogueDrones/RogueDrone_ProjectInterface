@@ -1,8 +1,10 @@
 // frontend/components/Layout.tsx
-import React, { ReactNode, useState, useEffect } from 'react';
+import React, { ReactNode, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import { useAuth } from '../context/AuthContext';
+import LoadingSpinner from './common/LoadingSpinner';
 
 type LayoutProps = {
   children: ReactNode;
@@ -14,59 +16,41 @@ export default function Layout({
   title = 'Rogue Drones Client Workflow' 
 }: LayoutProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [authError, setAuthError] = useState<boolean>(false);
+  const { user, logout, loading } = useAuth();
   const router = useRouter();
 
-  // Fetch user info on component mount
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        // If no token, redirect to login
-        router.push('/login');
-        return;
-      }
+  // If auth context is loading, show a loading spinner
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <LoadingSpinner size="large" text="Loading..." />
+      </div>
+    );
+  }
 
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        console.log('Fetching user info from:', `${apiUrl}/api/v1/auth/me`);
-        
-        const response = await fetch(
-          `${apiUrl}/api/v1/auth/me`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        );
-        
-        if (response.ok) {
-          const userData = await response.json();
-          setUserName(`${userData.first_name} ${userData.last_name}`);
-        } else if (response.status === 401 || response.status === 403) {
-          // Unauthorized - token may be expired
-          localStorage.removeItem('token');
-          router.push('/login');
-        } else {
-          console.error('Error fetching user info:', response.status);
-          setAuthError(true);
-        }
-      } catch (error) {
-        console.error('Error fetching user info:', error);
-        setAuthError(true);
-      }
-    };
-
-    if (router.pathname !== '/login' && router.pathname !== '/register') {
-      fetchUserInfo();
-    }
-  }, [router]);
+  // If no user and not on login/register page, redirect is handled by AuthContext
+  // We just don't render anything here
+  if (!user && !router.pathname.includes('/login') && !router.pathname.includes('/register')) {
+    return null;
+  }
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    router.push('/login');
+    logout();
   };
+
+  // Don't render the layout for login/register pages
+  if (router.pathname === '/login' || router.pathname === '/register') {
+    return (
+      <>
+        <Head>
+          <title>{title}</title>
+          <meta name="description" content="Client workflow management system for Rogue Drones" />
+          <link rel="icon" href="/favicon.ico" />
+        </Head>
+        {children}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -75,14 +59,6 @@ export default function Layout({
         <meta name="description" content="Client workflow management system for Rogue Drones" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-
-      {/* Show API error banner if needed */}
-      {authError && (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4" role="alert">
-          <p className="font-bold">API Connection Issue</p>
-          <p>Unable to connect to the backend API. Please ensure the server is running at {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}</p>
-        </div>
-      )}
 
       {/* Header */}
       <header className="bg-blue-700 text-white shadow-md">
@@ -115,8 +91,8 @@ export default function Layout({
 
             {/* User menu */}
             <div className="flex items-center">
-              {userName && (
-                <span className="mr-4 hidden md:inline">{userName}</span>
+              {user && (
+                <span className="mr-4 hidden md:inline">{user.first_name} {user.last_name}</span>
               )}
               <button
                 onClick={handleLogout}
@@ -186,8 +162,8 @@ export default function Layout({
               >
                 Organizations
               </Link>
-              {userName && (
-                <div className="py-2 text-sm text-blue-200">{userName}</div>
+              {user && (
+                <div className="py-2 text-sm text-blue-200">{user.first_name} {user.last_name}</div>
               )}
             </nav>
           )}

@@ -1,9 +1,9 @@
 // frontend/pages/login.tsx
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
 import { useForm } from 'react-hook-form';
-import axios from 'axios';
 import Link from 'next/link';
+import { useAuth } from '../context/AuthContext';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 type LoginFormData = {
   email: string;
@@ -11,10 +11,9 @@ type LoginFormData = {
 };
 
 export default function Login() {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [apiUrl, setApiUrl] = useState<string>('');
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'running' | 'error'>('checking');
+  const { login, error: authError, loading } = useAuth();
   
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>();
   
@@ -34,9 +33,10 @@ export default function Login() {
         // Try to access the health check endpoint
         await fetch(`${apiUrl}/health`, { method: 'GET' });
         console.log('Backend is running');
+        setBackendStatus('running');
       } catch (err) {
         console.error('Backend connection error:', err);
-        setError('Cannot connect to the backend server. Please ensure it is running.');
+        setBackendStatus('error');
       }
     };
     
@@ -44,57 +44,7 @@ export default function Login() {
   }, [apiUrl]);
   
   const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      console.log(`Attempting to login at ${apiUrl}/api/v1/auth/login`);
-      
-      // Convert email/password to FormData for OAuth2 compatibility
-      const formData = new FormData();
-      formData.append('username', data.email);
-      formData.append('password', data.password);
-      
-      const response = await axios.post(
-        `${apiUrl}/api/v1/auth/login`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-      
-      console.log('Login response:', response.data);
-      
-      // Save token to localStorage
-      localStorage.setItem('token', response.data.access_token);
-      
-      // Redirect to dashboard
-      router.push('/');
-    } catch (err: any) {
-      console.error('Login error:', err);
-      
-      if (err.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        if (err.response.status === 401) {
-          setError('Invalid email or password');
-        } else if (err.response.data?.detail) {
-          setError(err.response.data.detail);
-        } else {
-          setError(`Server error: ${err.response.status}`);
-        }
-      } else if (err.request) {
-        // The request was made but no response was received
-        setError('No response from server. Please check if the backend is running.');
-      } else {
-        // Something happened in setting up the request
-        setError(err.message || 'An error occurred during login. Please try again.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    await login(data.email, data.password);
   };
   
   return (
@@ -106,9 +56,15 @@ export default function Login() {
         
         <h2 className="text-xl font-semibold mb-6">Login</h2>
         
-        {error && (
+        {authError && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+            {authError}
+          </div>
+        )}
+
+        {backendStatus === 'error' && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            Cannot connect to the backend server. Please ensure it is running at {apiUrl}
           </div>
         )}
         
@@ -167,11 +123,18 @@ export default function Login() {
             <button
               type="submit"
               className={`bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                loading ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              disabled={isLoading}
+              disabled={loading}
             >
-              {isLoading ? 'Logging in...' : 'Login'}
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 mr-2 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
+                  <span>Logging in...</span>
+                </div>
+              ) : (
+                'Login'
+              )}
             </button>
             
             <Link
@@ -187,7 +150,9 @@ export default function Login() {
         <div className="mt-8 text-xs text-gray-500">
           <p>Connecting to API: {apiUrl}</p>
           <p className="mt-1">
-            If you're experiencing connection issues, please make sure the backend server is running.
+            {backendStatus === 'checking' && 'Checking connection to backend...'}
+            {backendStatus === 'running' && 'Backend server is running.'}
+            {backendStatus === 'error' && 'Cannot connect to backend server.'}
           </p>
         </div>
       </div>

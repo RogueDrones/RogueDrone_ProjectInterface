@@ -1,28 +1,8 @@
 // frontend/lib/api/clientApi.ts
-import axios from 'axios';
 import { Client, ClientCreate, ClientUpdate } from '../../types/client';
+import { apiClient } from './apiClient';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9091';
 const API_PATH = '/api/v1/clients';
-
-console.log('API URL:', API_URL); // Debug log
-
-// Configure axios instance with default headers
-const apiClient = axios.create({
-  baseURL: API_URL,
-  // Add timeout to avoid hanging requests
-  timeout: 10000,
-});
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  console.log(`Making request to: ${config.baseURL}${config.url}`); // Debug log
-  return config;
-});
 
 export const clientApi = {
   // Fetch all clients
